@@ -45,4 +45,10 @@ if [ -f "${HOMELAB_DIR}/configs/systemd/logind.conf" ]; then
   echo "[+] logind applied"
 fi
 
+if [ -f "${HOMELAB_DIR}/scripts/security/disable-systemd-resolved-stub.sh" ]; then
+  echo "[*] Configuring systemd-resolved for AdGuardHome..."
+  bash "${HOMELAB_DIR}/scripts/security/disable-systemd-resolved-stub.sh" || true
+  echo "[+] systemd-resolved configured"
+fi
+
 echo "[✓] All applies complete"

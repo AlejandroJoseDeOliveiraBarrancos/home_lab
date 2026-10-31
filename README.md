@@ -34,3 +34,6 @@ This repo follows a GitOps-style structure:
 - `make test` - Test connectivity
 
 - [SSH Keys](docs/SSH_KEYS.md) - Key setup and distribution
+
+- [Phases 2 & 3](docs/PHASES_2_3.md) - Docker, Nginx Proxy Manager, AdGuardHome, UFW, Tailscale
+- [Current State](docs/CURRENT_STATE.md) - Snapshot of working configuration

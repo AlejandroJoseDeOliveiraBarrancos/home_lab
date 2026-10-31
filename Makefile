@@ -9,17 +9,13 @@ RSYNC_RSH := ssh $(SSH_OPTS)
 REMOTE := $(SERVER_USER)@$(SERVER_IP)
 REMOTE_DIR := $(_REMOTE_DIR)
 
-.PHONY: all bootstrap sync apply ssh status test sudo-nopasswd
+.PHONY: all sync apply ssh status test sudo-nopasswd docker firewall npm-up npm-down adguard-up adguard-down tailscale-up
 
 all: apply
 
-bootstrap: sync
-	@echo "Bootstrapping server..."
-	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/bootstrap/bootstrap.sh"
-
 sync:
 	@echo "Initializing remote directory..."
-	ssh $(SSH_OPTS) $(REMOTE) "mkdir -p $(REMOTE_DIR)/{configs,roles,scripts,bootstrap,stacks,inventory,scripts/{core,security,maintenance,utils}}"
+	ssh $(SSH_OPTS) $(REMOTE) "mkdir -p $(REMOTE_DIR)/{configs,roles,scripts,bootstrap,stacks,inventory,scripts/{core,security,maintenance,utils},stacks/core/nginx-proxy-manager,stacks/core/adguardhome}"
 	@echo "Syncing repository to server..."
 	RSYNC_RSH="$(RSYNC_RSH)" rsync -avz --delete \
 		--exclude '.git' \
@@ -38,6 +34,32 @@ sudo-nopasswd: sync
 	@echo "Making sudo passwordless on server..."
 	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/scripts/security/make-sudo-nopasswd.sh"
 
+docker: sync
+	@echo "Installing Docker on server..."
+	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/scripts/core/install-docker.sh"
+
+firewall: sync
+	@echo "Configuring UFW firewall..."
+	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/scripts/security/setup-ufw.sh"
+
+npm-up: sync
+	@echo "Starting Nginx Proxy Manager..."
+	ssh $(SSH_OPTS) $(REMOTE) "docker network inspect proxy >/dev/null 2>&1 || docker network create proxy; cd $(REMOTE_DIR)/stacks/core/nginx-proxy-manager && docker compose up -d"
+
+npm-down:
+	ssh $(SSH_OPTS) $(REMOTE) "cd $(REMOTE_DIR)/stacks/core/nginx-proxy-manager && docker compose down"
+
+adguard-up: sync
+	@echo "Starting AdGuardHome..."
+	ssh $(SSH_OPTS) $(REMOTE) "docker network inspect proxy >/dev/null 2>&1 || docker network create proxy; cd $(REMOTE_DIR)/stacks/core/adguardhome && docker compose up -d"
+
+adguard-down:
+	ssh $(SSH_OPTS) $(REMOTE) "cd $(REMOTE_DIR)/stacks/core/adguardhome && docker compose down"
+
+tailscale-up: sync
+	@echo "Installing Tailscale..."
+	ssh $(SSH_OPTS) -t $(REMOTE) "curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up"
+
 ssh:
 	ssh $(SSH_OPTS) $(REMOTE)
 
@@ -47,3 +69,12 @@ status:
 test:
 	@echo "Testing connectivity to $(REMOTE)..."
 	ssh $(SSH_OPTS) -o ConnectTimeout=5 -p $(SSH_PORT) $(REMOTE) "echo 'OK'" || echo "FAILED"
+
+
+up: sync
+	@echo "Starting all services..."
+	@ssh $(SSH_OPTS) $(REMOTE) 'docker network inspect proxy >/dev/null 2>&1 || docker network create proxy; find $$HOME/homelab/stacks -name "docker-compose.yml" -exec sh -c '"'"'d=$$(dirname "{}"); echo "Starting $$d"; (cd "$$d" && docker compose up -d || true)'"'"' \;'
+
+down:
+	@echo "Stopping all services..."
+	@ssh $(SSH_OPTS) $(REMOTE) 'find $$HOME/homelab/stacks -name "docker-compose.yml" -exec sh -c '"'"'d=$$(dirname "{}"); echo "Stopping $$d"; (cd "$$d" && docker compose down || true)'"'"' \;'
