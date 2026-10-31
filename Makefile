@@ -1,37 +1,49 @@
--include .env
+-include inventory/hosts.env
 export
 
+REPO_DIR := $(shell pwd)
+SSH_KEY := $(REPO_DIR)/inventory/homelab-server
+SSH_OPTS := -o IdentityFile=$(SSH_KEY) -o IdentitiesOnly=yes
+RSYNC_RSH := ssh $(SSH_OPTS)
+
 REMOTE := $(SERVER_USER)@$(SERVER_IP)
-REMOTE_DIR := ~/homelab-config
+REMOTE_DIR := $(_REMOTE_DIR)
 
-.PHONY: all init push ssh apply-ip apply-lid status
+.PHONY: all bootstrap sync apply ssh status test sudo-nopasswd
 
-all: push apply-ip apply-lid
+all: apply
 
-init:
-	@echo "Initializing remote configuration directory..."
-	ssh $(REMOTE) "mkdir -p $(REMOTE_DIR)/netplan $(REMOTE_DIR)/systemd"
+bootstrap: sync
+	@echo "Bootstrapping server..."
+	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/bootstrap/bootstrap.sh"
 
-push: init
-	@echo "Syncing configuration files to server..."
-	rsync -avz --exclude '.git' --exclude '.env' ./ $(REMOTE):$(REMOTE_DIR)/
+sync:
+	@echo "Initializing remote directory..."
+	ssh $(SSH_OPTS) $(REMOTE) "mkdir -p $(REMOTE_DIR)/{configs,roles,scripts,bootstrap,stacks,inventory,scripts/{core,security,maintenance,utils}}"
+	@echo "Syncing repository to server..."
+	RSYNC_RSH="$(RSYNC_RSH)" rsync -avz --delete \
+		--exclude '.git' \
+		--exclude 'inventory/hosts.env' \
+		--exclude 'inventory/homelab-server' \
+		--exclude 'inventory/server' \
+		--exclude '*.swp' \
+		--exclude '*~' \
+		$(REPO_DIR)/ $(REMOTE):$(REMOTE_DIR)/
+
+apply: sync
+	@echo "Applying all configurations..."
+	ssh $(SSH_OPTS) $(REMOTE) "bash $(REMOTE_DIR)/scripts/apply.sh"
+
+sudo-nopasswd: sync
+	@echo "Making sudo passwordless on server..."
+	ssh $(SSH_OPTS) -t $(REMOTE) "bash $(REMOTE_DIR)/scripts/security/make-sudo-nopasswd.sh"
 
 ssh:
-	ssh $(REMOTE)
-
-apply-ip: push
-	@echo "Applying static IP configuration via Netplan..."
-	ssh $(REMOTE) "sudo cp $(REMOTE_DIR)/netplan/01-static-ip.yaml /etc/netplan/01-static-ip.yaml && sudo netplan apply"
-	@echo "Static IP applied successfully. Reconnect using 'make ssh' once the IP updates."
-
-apply-lid: push
-	@echo "Configuring systemd to ignore lid close..."
-	ssh $(REMOTE) "sudo cp $(REMOTE_DIR)/systemd/logind.conf /etc/systemd/logind.conf && sudo systemctl restart systemd-logind"
-	@echo "Lid-close behavior updated successfully."
+	ssh $(SSH_OPTS) $(REMOTE)
 
 status:
-	ssh $(REMOTE) "hostnamectl && ip -4 addr show $(SERVER_INTERFACE)"
+	ssh $(SSH_OPTS) $(REMOTE) "hostnamectl && echo '---' && ip -4 addr show $(SERVER_INTERFACE) 2>/dev/null || ip -4 addr show && echo '---' && docker ps 2>/dev/null || true"
 
-connect-test:
-	@echo "Testing SSH connectivity..."
-	ssh -o ConnectTimeout=5 $(REMOTE) "echo 'Connected successfully'" || echo "Connection failed"
+test:
+	@echo "Testing connectivity to $(REMOTE)..."
+	ssh $(SSH_OPTS) -o ConnectTimeout=5 -p $(SSH_PORT) $(REMOTE) "echo 'OK'" || echo "FAILED"
