@@ -51,4 +51,29 @@ if [ -f "${HOMELAB_DIR}/scripts/security/disable-systemd-resolved-stub.sh" ]; th
   echo "[+] systemd-resolved configured"
 fi
 
+echo "[*] Fixing permissions on Docker volume data..."
+USER_NAME="$(whoami)"
+for dir in \
+  "${HOMELAB_DIR}/stacks/core/nginx-proxy-manager/data" \
+  "${HOMELAB_DIR}/stacks/core/nginx-proxy-manager/letsencrypt" \
+  "${HOMELAB_DIR}/stacks/core/adguardhome/workdir" \
+  "${HOMELAB_DIR}/stacks/core/adguardhome/confdir"; do
+  if [ -d "$dir" ]; then
+    sudo chown -R "$USER_NAME:$USER_NAME" "$dir" 2>/dev/null || true
+  fi
+done
+echo "[+] Permissions fixed"
+
 echo "[✓] All applies complete"
+
+echo "[*] Fixing permissions on all Docker volume data..."
+USER_NAME="$(whoami)"
+find "${HOMELAB_DIR}/stacks" -type d \( -name "data" -o -name "config" -o -name "cache" -o -name "workdir" -o -name "confdir" -o -name "ollama" -o -name "openwebui" -o -name "logs" \) 2>/dev/null | while read d; do
+  sudo chown -R "$USER_NAME:$USER_NAME" "$d" 2>/dev/null || true
+done
+echo "[+] All permissions fixed"
+
+if [ -f "${HOMELAB_DIR}/scripts/apps/apply-app-configs.sh" ]; then
+  echo "[*] Applying application configs..."
+  bash "${HOMELAB_DIR}/scripts/apps/apply-app-configs.sh" || true
+fi

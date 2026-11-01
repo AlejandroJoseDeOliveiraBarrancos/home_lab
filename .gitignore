@@ -29,3 +29,27 @@ inventory/homelab-server
 # SSH private keys
 inventory/homelab-server
 inventory/server
+
+# Docker runtime data
+stacks/*/*/data/
+stacks/*/*/config/
+stacks/*/*/workdir/
+stacks/*/*/confdir/
+stacks/*/*/cache/
+stacks/*/*/ollama/
+stacks/*/*/openwebui/
+stacks/*/*/logs/
+!stacks/*/*/config/.gitkeep
+!stacks/security/gluetun/config/.gitkeep
+
+# Ignore all docker runtime dirs
+**/data/
+**/config/
+**/cache/
+**/workdir/
+**/confdir/
+**/ollama/
+**/openwebui/
+**/logs/
+**/servers/
+!**/config/.gitkeep

@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    container_name: minecraft
+    tty: true
+    stdin_open: true
+    environment:
+      - EULA=TRUE
+      - TYPE=VANILLA
+      - VERSION=1.21.1
+      - MEMORY=2G
+      - MOTD=Homelab Minecraft Server
+    volumes:
+      - ./data:/data
+    ports:
+      - 25565:25565
+    restart: unless-stopped
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
